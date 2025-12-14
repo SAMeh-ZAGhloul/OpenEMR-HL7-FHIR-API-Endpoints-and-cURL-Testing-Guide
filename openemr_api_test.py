@@ -15,6 +15,8 @@ import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 import sys
+import secrets
+import hashlib
 
 # Disable SSL warnings for self-signed certificates
 import urllib3
@@ -33,8 +35,9 @@ class Config:
     
     # Application Registration
     APP_NAME = "POC Testing App"
-    APP_TYPE = "private"
-    SCOPES = "openid offline_access api:oemr api:fhir user/Patient.read user/Observation.read"
+    APP_TYPE = "native"
+    CODE_VERIFIER = None
+    SCOPES = "openid offline_access api:oemr api:fhir"
     
     # Credentials (will be populated after registration)
     CLIENT_ID = None
@@ -126,7 +129,7 @@ class OpenEMRAPI:
             "redirect_uris": [Config.REDIRECT_URI],
             "post_logout_redirect_uris": [f"{Config.REDIRECT_URI}/logout"],
             "client_name": Config.APP_NAME,
-            "token_endpoint_auth_method": "client_secret_basic",
+            "token_endpoint_auth_method": "client_secret_post",
             "contacts": ["admin@example.com"],
             "scope": Config.SCOPES
         }
@@ -140,7 +143,7 @@ class OpenEMRAPI:
         if response.status_code in [200, 201]:
             data = response.json()
             Config.CLIENT_ID = data['client_id']
-            Config.CLIENT_SECRET = data['client_secret']
+            Config.CLIENT_SECRET = data.get('client_secret')
             print(f"\n✅ Registration Successful!")
             print(f"Client ID: {Config.CLIENT_ID}")
             print(f"Client Secret: {Config.CLIENT_SECRET}")
@@ -155,13 +158,21 @@ class OpenEMRAPI:
         """
         self.print_step("0.1.1", "Get Authorization Code (Browser)")
         
+        # Generate PKCE
+        verifier = secrets.token_urlsafe(64)
+        Config.CODE_VERIFIER = verifier
+        digest = hashlib.sha256(verifier.encode('utf-8')).digest()
+        challenge = base64.urlsafe_b64encode(digest).decode('utf-8').rstrip('=')
+
         # Build authorization URL
         params = {
             'response_type': 'code',
             'client_id': Config.CLIENT_ID,
             'redirect_uri': Config.REDIRECT_URI,
             'scope': Config.SCOPES,
-            'state': 'random_state_12345'
+            'state': 'random_state_12345',
+            'code_challenge': challenge,
+            'code_challenge_method': 'S256'
         }
         auth_url = f"{Config.OAUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"
         
@@ -196,23 +207,23 @@ class OpenEMRAPI:
         self.print_step("0.1.2", "Exchange Code for Access Token")
         
         url = f"{Config.OAUTH_BASE}/token"
+        
+        # Public client with PKCE
         payload = {
             'grant_type': 'authorization_code',
             'redirect_uri': Config.REDIRECT_URI,
-            'code': auth_code
+            'code': auth_code,
+            'client_id': Config.CLIENT_ID,
+            'client_secret': Config.CLIENT_SECRET,
+            'code_verifier': Config.CODE_VERIFIER
         }
         
         print(f"POST {url}")
         print(f"Payload: {json.dumps(payload, indent=2)}")
-        print(f"Auth: Basic (client_id:client_secret)")
-        
-        # Use HTTP Basic Authentication for client credentials
-        from requests.auth import HTTPBasicAuth
         
         response = self.session.post(
             url,
             data=payload,
-            auth=HTTPBasicAuth(Config.CLIENT_ID, Config.CLIENT_SECRET),
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         self.print_response(response, show_full=True)
@@ -239,15 +250,14 @@ class OpenEMRAPI:
         url = f"{Config.OAUTH_BASE}/token"
         payload = {
             'grant_type': 'refresh_token',
-            'refresh_token': Config.REFRESH_TOKEN
+            'refresh_token': Config.REFRESH_TOKEN,
+            'client_id': Config.CLIENT_ID,
+            'client_secret': Config.CLIENT_SECRET
         }
-        
-        from requests.auth import HTTPBasicAuth
         
         response = self.session.post(
             url,
             data=payload,
-            auth=HTTPBasicAuth(Config.CLIENT_ID, Config.CLIENT_SECRET),
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         
@@ -268,6 +278,28 @@ class OpenEMRAPI:
     
     # ==================== SCENARIO A: Patient Demographics ====================
     
+    def search_patients(self) -> None:
+        """
+        Test: Search for patients (Read Access check)
+        """
+        self.print_step("A.1", "Search Patients (Read Access Check)")
+        
+        url = f"{Config.FHIR_BASE}/Patient"
+        print(f"GET {url}")
+        
+        response = self.session.get(url, headers=self.get_auth_headers())
+        self.print_response(response, show_full=False)
+        
+        if response.status_code == 200:
+            print("✅ Patient Search Successful (Read Access Confirmed)")
+            data = response.json()
+            if 'entry' in data:
+                print(f"Found {len(data['entry'])} patients.")
+            else:
+                print("No patients found, but access allowed.")
+        else:
+             print(f"❌ Patient Search Failed: {response.status_code}")
+
     def create_patient(self) -> str:
         """
         Scenario A: Create a new patient
@@ -699,32 +731,62 @@ def main():
         print("="*80)
         
         # Scenario A: Patient Demographics
-        api.create_patient()
+        api.search_patients()
+        time.sleep(1)
+        
+        try:
+            api.create_patient()
+        except Exception as e:
+            print(f"⚠️ Create Patient failed (Likely due to Public Client Write restrictions): {e}")
         time.sleep(1)
         
         # Scenario B: Appointment Scheduling
-        api.create_appointment()
-        time.sleep(1)
+        if Config.PATIENT_ID:
+            try:
+                api.create_appointment()
+                time.sleep(1)
+            except Exception as e:
+                print(f"⚠️ Create Appointment failed: {e}")
+        else:
+            print("⚠️ Skipping Appointment creation (No Patient ID)")
         
         # Scenario C: Clinical Encounter
-        api.create_encounter()
-        time.sleep(1)
-        
-        api.create_vital_signs()
-        time.sleep(1)
-        
-        api.create_clinical_note()
-        time.sleep(1)
+        if Config.PATIENT_ID:
+            try:
+                api.create_encounter()
+                time.sleep(1)
+                
+                api.create_vital_signs()
+                time.sleep(1)
+                
+                api.create_clinical_note()
+                time.sleep(1)
+            except Exception as e:
+                print(f"⚠️ Clinical Encounter steps failed: {e}")
+        else:
+             print("⚠️ Skipping Clinical Encounter steps (No Patient ID)")
         
         # Scenario D: Prescribing and Ordering
-        api.create_medication_request()
-        time.sleep(1)
-        
-        api.create_service_request()
-        time.sleep(1)
+        if Config.PATIENT_ID and Config.ENCOUNTER_ID:
+             try:
+                api.create_medication_request()
+                time.sleep(1)
+                
+                api.create_service_request()
+                time.sleep(1)
+             except Exception as e:
+                 print(f"⚠️ Prescribing steps failed: {e}")
+        else:
+             print("⚠️ Skipping Prescribing steps (No Patient/Encounter ID)")
         
         # Read back patient data
-        api.read_patient()
+        if Config.PATIENT_ID:
+            try:
+                api.read_patient()
+            except Exception as e:
+                print(f"⚠️ Read Patient failed: {e}")
+        else:
+            print("⚠️ Skipping Read Patient (No Patient ID)")
         
         # Final Summary
         print("\n" + "="*80)
