@@ -126,7 +126,7 @@ class OpenEMRAPI:
             "redirect_uris": [Config.REDIRECT_URI],
             "post_logout_redirect_uris": [f"{Config.REDIRECT_URI}/logout"],
             "client_name": Config.APP_NAME,
-            "token_endpoint_auth_method": "client_secret_post",
+            "token_endpoint_auth_method": "client_secret_basic",
             "contacts": ["admin@example.com"],
             "scope": Config.SCOPES
         }
