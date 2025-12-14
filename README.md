@@ -1,3 +1,40 @@
+# OpenEMR FHIR API Testing Guide & Automation Suite
+
+[![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![FHIR](https://img.shields.io/badge/FHIR-R4-green.svg)](https://www.hl7.org/fhir/)
+[![OpenEMR](https://img.shields.io/badge/OpenEMR-7.0+-orange.svg)](https://www.open-emr.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+> **🚀 NEW!** This repository now includes a **complete Python automation suite** that automates OAuth2 authentication and tests all FHIR API endpoints. No more manual cURL commands!
+
+## 📚 Quick Navigation
+
+| Document | Purpose | For |
+|----------|---------|-----|
+| **[INDEX.md](INDEX.md)** | Documentation hub | Finding the right guide |
+| **[QUICKSTART.md](QUICKSTART.md)** | 3-step setup | Running tests immediately |
+| **[AUTOMATION_SUMMARY.md](AUTOMATION_SUMMARY.md)** | What was created | Understanding the automation |
+| **[WORKFLOW.md](WORKFLOW.md)** | Visual diagrams | Seeing the flow |
+| **[TESTING_GUIDE.md](TESTING_GUIDE.md)** | Comprehensive docs | Detailed information |
+| **README.md** (this file) | API documentation | cURL examples & reference |
+
+## 🎯 Choose Your Path
+
+### Path 1: Automated Testing (Recommended) ⚡
+```bash
+# Check prerequisites
+python3 check_prerequisites.py
+
+# Run all tests automatically
+python3 openemr_api_test.py
+```
+**→ See [QUICKSTART.md](QUICKSTART.md) for details**
+
+### Path 2: Manual cURL Testing 📝
+Follow the detailed cURL examples in this README below.
+
+---
+
 # OpenEMR Real API Endpoints and cURL Testing Guide (FHIR ONLY)
 
 This guide provides the necessary steps and actual OpenEMR RESTful API endpoints for testing the Proof of Concept (PoC) scenarios, exclusively using the HL7 FHIR standard.
