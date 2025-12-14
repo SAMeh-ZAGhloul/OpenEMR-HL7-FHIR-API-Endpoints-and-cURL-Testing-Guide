@@ -137,7 +137,7 @@ class OpenEMRAPI:
         response = self.session.post(url, json=payload)
         self.print_response(response, show_full=True)
         
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             data = response.json()
             Config.CLIENT_ID = data['client_id']
             Config.CLIENT_SECRET = data['client_secret']
