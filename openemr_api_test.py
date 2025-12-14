@@ -198,18 +198,21 @@ class OpenEMRAPI:
         url = f"{Config.OAUTH_BASE}/token"
         payload = {
             'grant_type': 'authorization_code',
-            'client_id': Config.CLIENT_ID,
-            'client_secret': Config.CLIENT_SECRET,
             'redirect_uri': Config.REDIRECT_URI,
             'code': auth_code
         }
         
         print(f"POST {url}")
-        print(f"Payload: {json.dumps({k: v[:20]+'...' if len(str(v)) > 20 else v for k, v in payload.items()}, indent=2)}")
+        print(f"Payload: {json.dumps(payload, indent=2)}")
+        print(f"Auth: Basic (client_id:client_secret)")
+        
+        # Use HTTP Basic Authentication for client credentials
+        from requests.auth import HTTPBasicAuth
         
         response = self.session.post(
             url,
             data=payload,
+            auth=HTTPBasicAuth(Config.CLIENT_ID, Config.CLIENT_SECRET),
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         self.print_response(response, show_full=True)
@@ -236,14 +239,15 @@ class OpenEMRAPI:
         url = f"{Config.OAUTH_BASE}/token"
         payload = {
             'grant_type': 'refresh_token',
-            'client_id': Config.CLIENT_ID,
-            'client_secret': Config.CLIENT_SECRET,
             'refresh_token': Config.REFRESH_TOKEN
         }
+        
+        from requests.auth import HTTPBasicAuth
         
         response = self.session.post(
             url,
             data=payload,
+            auth=HTTPBasicAuth(Config.CLIENT_ID, Config.CLIENT_SECRET),
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         
