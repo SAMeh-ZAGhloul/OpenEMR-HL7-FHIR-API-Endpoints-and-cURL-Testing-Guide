@@ -1,0 +1,51 @@
+version: '3.3'
+services:
+  # The Core OpenEMR Application (Internal only, not exposed directly)
+  openemr_app:
+    image: openemr/openemr:latest
+    container_name: openemr_app
+    restart: always
+    environment:
+      # Link to the database container
+      - MYSQL_HOST=openemr_mysql
+      - MYSQL_ROOT_PASS=password123
+      - MYSQL_USER=openemr
+      - MYSQL_PASS=openemr
+      - OPENEMR_DATABASE=openemr
+    depends_on:
+      - openemr_mysql
+    volumes:
+      - openemr_data:/var/www/html/openemr
+
+  # The Reverse Proxy (Terminates SSL and forwards to openemr_app)
+  nginx_proxy:
+    image: nginx:stable-alpine
+    container_name: openemr_nginx_proxy
+    restart: always
+    ports:
+      # Expose HTTPS on port 8443 to avoid conflicts, use https://localhost:8443
+      - "8443:443"
+    depends_on:
+      - openemr_app
+    volumes:
+      # Mount the Nginx configuration directory
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # Mount the self-signed certificates
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+  # The MySQL Database container (unchanged)
+  openemr_mysql:
+    image: mariadb:10.5
+    container_name: openemr_db
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=password123
+      - MYSQL_USER=openemr
+      - MYSQL_PASSWORD=openemr
+      - MYSQL_DATABASE=openemr
+    volumes:
+      - openemr_db_data:/var/lib/mysql
+
+volumes:
+  openemr_data:
+  openemr_db_data:
