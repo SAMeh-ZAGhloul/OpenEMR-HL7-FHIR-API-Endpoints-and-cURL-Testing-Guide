@@ -126,7 +126,7 @@ def main():
     
     if passed == total:
         print(f"✅ All checks passed ({passed}/{total})")
-        print("\n🚀 You're ready to run: python3 openemr_api_test.py")
+        print("\n🚀 You're ready to run: python3 2_openemr_auth.py")
         return 0
     else:
         print(f"⚠️  {passed}/{total} checks passed")
