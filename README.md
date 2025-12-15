@@ -39,7 +39,7 @@ Get started testing OpenEMR FHIR APIs in under 2 minutes.
 
 ### Step 1: Check Prerequisites
 ```bash
-python3 check_prerequisites.py
+python3 1_check_prerequisites.py
 ```
 *Expected: "✅ All checks passed"*
 
@@ -49,17 +49,50 @@ pip3 install -r requirements.txt
 ```
 
 ### Step 3: Run Automated Tests
-```bash
-python3 openemr_api_test.py
-```
 
-**What happens:**
-1.  **Browser Opens**: Log in as admin and approve consent.
-2.  **Auth Success**: Script exchanges code for token using PKCE.
-3.  **Tests Run**: 
-    *   Verifies Read Access (Search Patients).
-    *   Attempts Write Operations (e.g. Create Patient) - *Note: Will report errors if permissions are restricted.*
-4.  **Summary**: Displays results and saved credentials.
+The testing suite is split into two steps:
+
+**1. Authenticate (One-time setup per session)**
+```bash
+python3 2_openemr_auth.py
+```
+*This registers the app, opens the browser for login, and saves credentials to `.env`.*
+
+**2. Run Tests**
+```bash
+python3 3_openemr_test.py
+```
+*This reads the credentials and performs all API tests.*
+
+---
+
+## 🐳 Docker Deployment Guide
+
+To run the OpenEMR environment locally using Docker:
+
+### 1. Generate SSL Certificates
+The local environment uses HTTPS. Generate self-signed certificates:
+```bash
+chmod +x generate_certs.sh
+./generate_certs.sh
+```
+*This creates `nginx/certs/cert.pem` and `nginx/certs/key.pem`.*
+
+### 2. Start Services
+Pull images and start containers:
+```bash
+docker-compose up -d
+```
+*Wait a few minutes for OpenEMR to initialize (database population).*
+
+### 3. Verify Deployment
+*   **URL**: `https://localhost:8443`
+*   **Login**: Default credentials are usually `admin` / `pass`.
+
+### 4. Stop Services
+```bash
+docker-compose down
+```
 
 ---
 
@@ -88,7 +121,7 @@ sequenceDiagram
     participant Browser
     participant OpenEMR
 
-    User->>Script: Run openemr_api_test.py
+    User->>Script: Run 2_openemr_auth.py / 3_openemr_test.py
     Script->>OpenEMR: Register Client (Dynamic)
     OpenEMR-->>Script: Client ID & Secret
     Script->>Browser: Open Authorization URL (PKCE)
@@ -120,7 +153,7 @@ The script attempts to cover the following scenarios:
 4.  **Scenario D: Prescribing** (MedicationRequest, ServiceRequest)
 
 ### Configuration
-Edit the `Config` class in `openemr_api_test.py` to customize:
+Edit the `Config` class in `2_openemr_auth.py` to customize:
 
 ```python
 class Config:
@@ -159,4 +192,4 @@ class Config:
 
 For manual cURL commands and legacy documentation, please refer to the `README.md` history or the original documentation provided by OpenEMR.
 
-*(Note: The previous cURL examples have been superseded by the `openemr_api_test.py` script.)*
+*(Note: The previous cURL examples have been superseded by the `3_openemr_test.py` script.)*
