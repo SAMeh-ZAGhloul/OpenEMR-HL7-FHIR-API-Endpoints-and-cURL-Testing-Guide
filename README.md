@@ -5,43 +5,43 @@
 [![OpenEMR](https://img.shields.io/badge/OpenEMR-7.0+-orange.svg)](https://www.open-emr.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **🚀 Complete Python automation suite** that automates OAuth2 authentication and tests all FHIR API endpoints. No more manual cURL commands!
+> **🚀 Complete Python automation suite** that automates OAuth2 authentication and tests FHIR API endpoints. Replaces manual cURL workflows with a browser-based login and programmatic validation.
 
 ---
 
-## ⚠️ Critical Update: Authentication Fix & Access Status
+## ⚠️ Current Status
 
-**Current Status (Dec 2025): Authentication Solved, Read-Only Access**
+**Dec 2025**
 
-The automation script has been updated to resolve the "Client authentication failed" error.
-- **✅ Authentication**: Uses `native` (Public) client with **PKCE** and `client_secret_post`. Successfully obtains tokens.
-- **✅ Verification**: Includes a `search_patients` test to confirm API Read access.
-- **⚠️ Write Limitation**: Due to OpenEMR environment restrictions, `native` clients are currently blocked from requesting `user/` scopes. This means **write operations** (creating patients, etc.) will be skipped or return `401 Unauthorized`.
-
-To enable full write automation, the OpenEMR server must be configured to allow `user/` scopes for public clients or fix confidential client authentication.
+- **Authentication**: Registers a confidential (`private`) client and completes OAuth2 Authorization Code flow using `client_secret_post`.
+- **Scopes**: Requests `system/patient.read` and `system/patient.write` in addition to `openid`, `offline_access`, `api:oemr`, and `api:fhir`.
+- **Read Access**: Verified via `Search Patients` test.
+- **Write Operations**: Attempted in sequence (Patient, Appointment, Encounter, Vitals, Note, Medication). Success depends on server configuration and granted scopes. If the server denies system write scopes, these calls may return `401/403`.
 
 ---
 
 ## 📑 Table of Contents
 
 - [Quick Start](#-quick-start)
+- [Deployment](#-deployment)
 - [Automation Overview](#-automation-overview)
 - [How It Works](#-how-it-works)
-- [Detailed Usage & Configuration](#-detailed-usage--configuration)
+- [Configuration](#-configuration)
 - [Troubleshooting](#-troubleshooting)
-- [Legacy API Reference (cURL)](#-legacy-api-reference-curl-examples)
+- [Repository Structure](#-repository-structure)
+- [License](#-license)
 
 ---
 
 ## 🚀 Quick Start
 
-Get started testing OpenEMR FHIR APIs in under 2 minutes.
+Get started testing OpenEMR FHIR APIs locally.
 
 ### Step 1: Check Prerequisites
 ```bash
 python3 1_check_prerequisites.py
 ```
-*Expected: "✅ All checks passed"*
+Expected: `✅ All checks passed`
 
 ### Step 2: Install Dependencies
 ```bash
@@ -50,46 +50,46 @@ pip3 install -r requirements.txt
 
 ### Step 3: Run Automated Tests
 
-The testing suite is split into two steps:
+The suite runs in two steps:
 
-**1. Authenticate (One-time setup per session)**
+1) Authenticate
 ```bash
 python3 2_openemr_auth.py
 ```
-*This registers the app, opens the browser for login, and saves credentials to `.env`.*
+Registers the app, opens the browser for login, and saves credentials to `.env`.
 
-**2. Run Tests**
+2) Run Tests
 ```bash
 python3 3_openemr_test.py
 ```
-*This reads the credentials and performs all API tests.*
+Reads credentials and performs FHIR API tests.
 
 ---
 
-## 🐳 Docker Deployment Guide
+## 🐳 Deployment
 
-To run the OpenEMR environment locally using Docker:
+Run the OpenEMR environment locally using Docker and an Nginx reverse proxy terminating HTTPS on `8443`.
 
-### 1. Generate SSL Certificates
-The local environment uses HTTPS. Generate self-signed certificates:
+### 1) Generate SSL Certificates
+Generate self-signed certificates for local HTTPS:
 ```bash
 chmod +x generate_certs.sh
 ./generate_certs.sh
 ```
-*This creates `nginx/certs/cert.pem` and `nginx/certs/key.pem`.*
+Creates `nginx/certs/cert.pem` and `nginx/certs/key.pem`.
 
-### 2. Start Services
+### 2) Start Services
 Pull images and start containers:
 ```bash
 docker-compose up -d
 ```
-*Wait a few minutes for OpenEMR to initialize (database population).*
+Wait a few minutes for OpenEMR to initialize (database population).
 
-### 3. Verify Deployment
-*   **URL**: `https://localhost:8443`
-*   **Login**: Default credentials are usually `admin` / `pass`.
+### 3) Verify Deployment
+- URL: `https://localhost:8443`
+- Login: Use your OpenEMR credentials. Fresh installs may prompt initial setup.
 
-### 4. Stop Services
+### 4) Stop Services
 ```bash
 docker-compose down
 ```
@@ -98,21 +98,21 @@ docker-compose down
 
 ## 🎯 Automation Overview
 
-This suite replaces complex manual cURL workflows with a modular set of Python scripts.
+Replaces manual cURL workflows with modular Python scripts and a browser-based OAuth2 flow.
 
-| Feature | Manual cURL | **Python Automation** |
+| Feature | Manual cURL | Python Automation |
 | :--- | :--- | :--- |
-| **Registration** | JSON payload construction | ✅ **Automatic** (API-based) |
-| **Auth** | Copy-pasting URLs & Codes | ✅ **Automatic** (Browser launch + Callback server) |
-| **Token Mgmt** | Manual export vars | ✅ **Automatic** (Exchange & Refresh) |
-| **Testing** | Individual cURL commands | ✅ **All endpoints tested in sequence** |
-| **Validation** | Manual JSON reading | ✅ **Programmatic validation** |
+| Registration | JSON payload construction | ✅ Automatic (API-based) |
+| Auth | Copy-paste URLs & codes | ✅ Automatic (Browser + local callback) |
+| Token Mgmt | Export env vars | ✅ Automatic (exchange) |
+| Testing | One-off cURL calls | ✅ Endpoints tested in sequence |
+| Validation | Manual JSON reading | ✅ Programmatic validation |
 
 ---
 
 ## 🔄 How It Works
 
-### Complete Automation Flow
+### Flow
 
 ```mermaid
 sequenceDiagram
@@ -122,76 +122,102 @@ sequenceDiagram
     participant OpenEMR
 
     User->>Script: Run 2_openemr_auth.py / 3_openemr_test.py
-    Script->>OpenEMR: Register Client (Dynamic)
+    Script->>OpenEMR: Register confidential client
     OpenEMR-->>Script: Client ID & Secret
-    Script->>Browser: Open Authorization URL (PKCE)
-    Browser->>User: Show Login Screen
-    User->>Browser: Login & Approve
-    Browser->>Script: Callback with Auth Code
-    Script->>OpenEMR: Exchange Code for Token
-    OpenEMR-->>Script: Access Token
-    Script->>OpenEMR: Test API Endpoints (GET/POST)
-    Script->>User: Display Results
+    Script->>Browser: Open Authorization URL
+    Browser->>User: Show login & consent
+    User->>Browser: Login & approve
+    Browser->>Script: Callback with auth code
+    Script->>OpenEMR: Exchange code for token (client_secret_post)
+    OpenEMR-->>Script: Access token
+    Script->>OpenEMR: Test FHIR endpoints
+    Script->>User: Display results
 ```
 
 ### Execution Timeline
-*   **0:00** Script starts & Registers App
-*   **0:02** Browser opens for Auth
-*   **0:05** Token Acquired
-*   **0:06** Read Access Verified
-*   **0:07+** Write Scenarios Tested (Patient, Appointment, Encounter, etc.)
+- 0:00 Register client
+- 0:02 Browser opens
+- 0:05 Token acquired
+- 0:06 Read access verified
+- 0:07+ Write scenarios attempted
 
 ---
 
-## 🧪 Detailed Usage & Configuration
+## ⚙️ Configuration
 
 ### What Gets Tested
-The script attempts to cover the following scenarios:
-1.  **Scenario A: Patient Demographics** (Create/Search Patient)
-2.  **Scenario B: Appointment Scheduling** (Book Appointment)
-3.  **Scenario C: Clinical Encounter** (Encounter, Vitals, Notes)
-4.  **Scenario D: Prescribing** (MedicationRequest, ServiceRequest)
+Scenarios attempted:
+- Patient demographics (create/search)
+- Appointment scheduling (book)
+- Clinical encounter (encounter, vitals, notes)
+- Prescribing (MedicationRequest)
 
-### Configuration
-Edit the `Config` class in `2_openemr_auth.py` to customize:
+### Auth Script Settings
+Edit the `Config` class in `2_openemr_auth.py`:
 
 ```python
 class Config:
     BASE_URL = "https://localhost:8443"
-    # Scopes reduced for Native client compatibility
-    SCOPES = "openid offline_access api:oemr api:fhir"
-    # Change to 'private' and add user/ scopes if environment allows
-    APP_TYPE = "native" 
+    REDIRECT_URI = "http://localhost:3000/callback"
+    CALLBACK_PORT = 3000
+    SCOPES = "openid offline_access api:oemr api:fhir system/Patient.read system/Patient.write"
+    APP_TYPE = "private"
+    AUTH_METHOD = "client_secret_post"
 ```
 
 ### Script Architecture
-*   **`2_openemr_auth.py` (`AuthClient`)**:
-    *   `register_application()`: Register OAuth2 client.
-    *   `get_authorization_code()`: Browser login & callback capture.
-    *   `exchange_code_for_token()`: PKCE Token verification.
-*   **`3_openemr_test.py` (`TestRunner`)**:
-    *   `load_env()`: Reads credentials.
-    *   `run()`: Orchestrates all FHIR endpoint tests.
+- `2_openemr_auth.py` (`OpenEMRAuth`)
+  - `register_application()`: Register OAuth2 client
+  - `get_authorization_code()`: Browser login & local callback
+  - `exchange_code_for_token()`: Token exchange (confidential client)
+  - `save_to_env()`: Persist credentials to `.env`
+- `3_openemr_test.py` (`TestRunner`)
+  - `load_env()`: Load `.env`
+  - `run()`: Execute FHIR endpoint tests
+
+### Enable the Client in OpenEMR
+- After registration, newly created clients may be disabled by default. Enable the client under `Admin → System → API Clients`.
+
+### Discovery & Endpoints
+- OIDC Discovery: `<BASE_URL>/oauth2/default/.well-known/openid-configuration`
+- Registration: `<BASE_URL>/oauth2/default/registration`
+- Authorization: `<BASE_URL>/oauth2/default/authorize`
+- Token: `<BASE_URL>/oauth2/default/token`
+
+### Scope Conventions
+- SMART scopes often use capitalized FHIR resource names, e.g., `system/Patient.read`, `user/Encounter.write`.
+- Some environments accept lowercase resource names; prefer capitalized names for compatibility.
 
 ---
 
 ## 🔧 Troubleshooting
 
-### 401 Unauthorized on Create Patient
-*   **Cause**: The current `native` client cannot obtain `user/` scopes required for writing data.
-*   **Solution**: This is a known limitation of the current OpenEMR configuration. Validate success via the `Search Patients` test (Read Access). To fix, server admin must allow public clients to request user scopes.
+### 401/403 on Write Operations
+- Cause: Missing or denied `system/*` or `user/*` write scopes
+- Fix: Adjust server configuration to grant appropriate scopes; confirm client type is allowed to request them
 
 ### Connection Refused
-*   Ensure OpenEMR is running (`docker ps`).
-*   Verify `BASE_URL` in `Config`.
+- Ensure OpenEMR is running (`docker ps`)
+- Verify `BASE_URL` in `Config`
 
 ### Browser Doesn't Open
-*   Manually copy the URL printed in the terminal.
+- Manually copy the URL printed in the terminal
 
 ---
 
-## 📖 Legacy API Reference (Link)
+## 📁 Repository Structure
 
-For manual cURL commands and legacy documentation, please refer to the `README.md` history or the original documentation provided by OpenEMR.
+Top-level layout for quick orientation:
 
-*(Note: The previous cURL examples have been superseded by the `3_openemr_test.py` script.)*
+- `1_check_prerequisites.py`: Environment checks (Python, endpoints)
+- `2_openemr_auth.py`: OAuth2 client registration, browser auth, token exchange, `.env` save
+- `3_openemr_test.py`: FHIR tests (read/write scenarios)
+- `requirements.txt`: Python dependencies
+- `docker-compose.yml`: OpenEMR app, DB, and HTTPS reverse proxy
+- `nginx/conf.d/default.conf`: Nginx site config (SSL termination, proxy to app)
+- `nginx/certs/`: Self-signed TLS certs generated locally
+- `generate_certs.sh`: Helper to generate `cert.pem`/`key.pem`
+
+## 🪪 License
+
+MIT License. See `LICENSE`.
