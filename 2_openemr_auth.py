@@ -12,9 +12,12 @@ import base64
 import time
 import urllib.parse
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import secrets
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
+import base64
 import hashlib
 import os
 
@@ -22,177 +25,226 @@ import os
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Configuration
 class Config:
-    """Configuration for OpenEMR API"""
     BASE_URL = "https://localhost:8443"
-    OAUTH_BASE = f"{BASE_URL}/oauth2/default"
     
     # OAuth2 Configuration
     REDIRECT_URI = "http://localhost:3000/callback"
     CALLBACK_PORT = 3000
+    # Scopes - Requesting System scopes for full access
+    SCOPES = "openid offline_access api:oemr api:fhir system/patient.read system/patient.write"
+    
+    # App Type - "private" (Confidential)
+    # Using 'private' to attempt to acquire system scopes
+    APP_TYPE = "private" 
+    
+    # Token Endpoint Auth Method - "client_secret_post"
+    AUTH_METHOD = "client_secret_post"
     
     # Application Registration
     APP_NAME = "POC Testing App"
-    APP_TYPE = "native"
-    SCOPES = "openid offline_access api:oemr api:fhir"
     
     # Credentials (will be populated)
     CODE_VERIFIER = None
     CLIENT_ID = None
     CLIENT_SECRET = None
-    ACCESS_TOKEN = None
-    REFRESH_TOKEN = None
+
+# Global variable to store authorization code
+auth_code = None
+
+def generate_jwks():
+    """Generates an RSA key pair and returns the JWKS."""
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+    )
+    
+    public_key = private_key.public_key()
+    
+    # Get public numbers
+    pn = public_key.public_numbers()
+    
+    def to_b64url(val):
+        """Helper to convert int to base64url string"""
+        bytes_val = val.to_bytes((val.bit_length() + 7) // 8, byteorder='big')
+        return base64.urlsafe_b64encode(bytes_val).decode('utf-8').rstrip('=')
+
+    jwk = {
+        "kty": "RSA",
+        "use": "sig",
+        "kid": "1", # Key ID
+        "alg": "RS256",
+        "n": to_b64url(pn.n),
+        "e": to_b64url(pn.e)
+    }
+    
+    return {"keys": [jwk]}
 
 class CallbackHandler(BaseHTTPRequestHandler):
-    """HTTP handler to capture OAuth2 callback"""
-    auth_code = None
-    
     def do_GET(self):
-        query = urllib.parse.urlparse(self.path).query
-        params = urllib.parse.parse_qs(query)
+        global auth_code
+        parsed_path = urllib.parse.urlparse(self.path)
+        query_params = urllib.parse.parse_qs(parsed_path.query)
         
-        if 'code' in params:
-            CallbackHandler.auth_code = params['code'][0]
+        if 'code' in query_params:
+            auth_code = query_params['code'][0]
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
-            self.wfile.write(b"""
-                <html><body>
-                <h1>Authorization Successful!</h1>
-                <p>You can close this window and return to the terminal.</p>
-                <script>window.close();</script>
-                </body></html>
-            """)
+            self.wfile.write(b"<html><body><h1>Authentication Successful!</h1><p>You can close this window and return to the terminal.</p></body></html>")
+            print("\n✅ Code Received")
         else:
             self.send_response(400)
-            self.wfile.write(b"No code received")
-    
+            self.end_headers()
+            self.wfile.write(b"Missing code parameter")
+            print("\n❌ Error: Callback received but missing 'code'")
+            
     def log_message(self, format, *args):
-        pass
+        return  # Suppress default logging
 
-class AuthClient:
+class OpenEMRAuth:
     def __init__(self):
-        self.session = requests.Session()
-        self.session.verify = False 
-    
-    def print_step(self, step: str, description: str):
-        print(f"\n{'='*80}\nSTEP {step}: {description}\n{'='*80}")
-    
-    def print_response(self, response):
-        print(f"Status: {response.status_code}")
-        try:
-            print(f"Body: {json.dumps(response.json(), indent=2)}")
-        except:
-            print(f"Body: {response.text[:500]}")
+        self.config = Config()
+        self.jwks = generate_jwks()
 
     def register_application(self):
-        self.print_step("1", "Register Application")
-        url = f"{Config.OAUTH_BASE}/registration"
+        print(f"\n{'='*80}\nSTEP 1: Register Application\n{'='*80}")
+        
+        url = f"{self.config.BASE_URL}/oauth2/default/registration"
+        
         payload = {
-            "application_type": Config.APP_TYPE,
-            "redirect_uris": [Config.REDIRECT_URI],
-            "post_logout_redirect_uris": [f"{Config.REDIRECT_URI}/logout"],
-            "client_name": Config.APP_NAME,
-            "token_endpoint_auth_method": "client_secret_post",
-            "contacts": ["admin@example.com"],
-            "scope": Config.SCOPES
+            "application_type": self.config.APP_TYPE,
+            "redirect_uris": [self.config.REDIRECT_URI],
+            "client_name": self.config.APP_NAME,
+            "token_endpoint_auth_method": self.config.AUTH_METHOD,
+            "scope": self.config.SCOPES,
+            "jwks": self.jwks, # Include JWKS for confidential client
+            "response_types": ["code"],
+            "grant_types": ["authorization_code", "refresh_token"]
         }
         
         print(f"POST {url}")
-        response = self.session.post(url, json=payload)
-        self.print_response(response)
-        
-        if response.status_code in [200, 201]:
-            data = response.json()
-            Config.CLIENT_ID = data['client_id']
-            Config.CLIENT_SECRET = data.get('client_secret', '')
-            print("✅ Registration Successful")
-            return Config.CLIENT_ID
-        else:
-            raise Exception("Registration failed")
+        try:
+            response = requests.post(url, json=payload, verify=False)
+            print(f"Status: {response.status_code}")
+            
+            if response.status_code == 201 or response.status_code == 200:
+                data = response.json()
+                print("Body: " + json.dumps(data, indent=2))
+                self.config.CLIENT_ID = data.get("client_id")
+                self.config.CLIENT_SECRET = data.get("client_secret")
+                print("✅ Registration Successful")
+                return True
+            else:
+                print("Body: " + json.dumps(response.json(), indent=2))
+                print("❌ Error: Registration failed")
+                return False
+        except Exception as e:
+            print(f"❌ Exception: {e}")
+            return False
 
     def get_authorization_code(self):
-        self.print_step("2", "Get Authorization Code (Browser)")
+        print(f"\n{'='*80}\nSTEP 2: Get Authorization Code (Browser)\n{'='*80}")
         
-        # PKCE
-        verifier = secrets.token_urlsafe(64)
-        Config.CODE_VERIFIER = verifier
-        digest = hashlib.sha256(verifier.encode('utf-8')).digest()
-        challenge = base64.urlsafe_b64encode(digest).decode('utf-8').rstrip('=')
-        
-        params = {
-            'response_type': 'code',
-            'client_id': Config.CLIENT_ID,
-            'redirect_uri': Config.REDIRECT_URI,
-            'scope': Config.SCOPES,
-            'state': secrets.token_hex(16),
-            'code_challenge': challenge,
-            'code_challenge_method': 'S256'
-        }
-        auth_url = f"{Config.OAUTH_BASE}/authorize?{urllib.parse.urlencode(params)}"
-        
-        print(f"Authorization URL: {auth_url}")
-        print("📌 Opening browser...")
-        
-        server = HTTPServer(('localhost', Config.CALLBACK_PORT), CallbackHandler)
-        thread = threading.Thread(target=server.handle_request)
+        # Start local server to listen for callback
+        server = HTTPServer(('localhost', self.config.CALLBACK_PORT), CallbackHandler)
+        thread = threading.Thread(target=server.serve_forever)
         thread.daemon = True
         thread.start()
         
-        webbrowser.open(auth_url)
-        thread.join(timeout=120)
+        # Construct Authorization URL
+        # Generate State
+        state = secrets.token_hex(16)
         
-        if CallbackHandler.auth_code:
-            print("✅ Code Received")
-            return CallbackHandler.auth_code
-        else:
-            raise Exception("No code received")
-
-    def exchange_code_for_token(self, code):
-        self.print_step("3", "Exchange Code for Token")
-        url = f"{Config.OAUTH_BASE}/token"
-        payload = {
-            'grant_type': 'authorization_code',
-            'redirect_uri': Config.REDIRECT_URI,
-            'code': code,
-            'client_id': Config.CLIENT_ID,
-            'client_secret': Config.CLIENT_SECRET,
-            'code_verifier': Config.CODE_VERIFIER
+        params = {
+            "response_type": "code",
+            "client_id": self.config.CLIENT_ID,
+            "redirect_uri": self.config.REDIRECT_URI,
+            "scope": self.config.SCOPES,
+            "state": state,
+            "aud": f"{self.config.BASE_URL}/oauth2/default"
         }
         
-        response = self.session.post(url, data=payload)
-        self.print_response(response)
+        auth_url = f"{self.config.BASE_URL}/oauth2/default/authorize?{urllib.parse.urlencode(params)}"
+        print(f"Authorization URL: {auth_url}")
+        print("📌 Opening browser...")
         
-        if response.status_code == 200:
-            data = response.json()
-            Config.ACCESS_TOKEN = data['access_token']
-            print("✅ Access Token Received")
-        else:
-            raise Exception("Token exchange failed")
+        webbrowser.open(auth_url)
+        
+        # Wait for code (timeout after 120 seconds)
+        for _ in range(120):
+            if auth_code:
+                break
+            time.sleep(1)
+            
+        server.shutdown()
+        
+        if not auth_code:
+            print("❌ Error: Timeout waiting for authorization code")
+            return None
+            
+        return auth_code
 
-    def save_to_env(self):
-        self.print_step("4", "Save Credentials to .env")
-        lines = [
-            f"OPENEMR_BASE_URL={Config.BASE_URL}",
-            f"CLIENT_ID={Config.CLIENT_ID}",
-            f"CLIENT_SECRET={Config.CLIENT_SECRET}",
-            f"ACCESS_TOKEN={Config.ACCESS_TOKEN}"
-        ]
+    def exchange_code_for_token(self, code):
+        print(f"\n{'='*80}\nSTEP 3: Exchange Code for Token\n{'='*80}")
         
-        with open('.env', 'w') as f:
-            f.write('\n'.join(lines))
+        url = f"{self.config.BASE_URL}/oauth2/default/token"
+        
+        payload = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self.config.REDIRECT_URI,
+            "client_id": self.config.CLIENT_ID,
+        }
+        
+        # Add client secret (since we are confidential client)
+        if self.config.CLIENT_SECRET:
+             payload["client_secret"] = self.config.CLIENT_SECRET
+
+        try:
+            # Use data=payload for form-urlencoded content type
+            response = requests.post(url, data=payload, verify=False)
+            print(f"Status: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                print("Body: " + json.dumps(data, indent=2))
+                access_token = data.get("access_token")
+                print("✅ Access Token Received")
+                return access_token
+            else:
+                print("Body: " + json.dumps(response.json(), indent=2))
+                print("❌ Error: Token exchange failed")
+                return None
+        except Exception as e:
+            print(f"❌ Exception: {e}")
+            return None
+
+    def save_to_env(self, access_token):
+        print(f"\n{'='*80}\nSTEP 4: Save Credentials to .env\n{'='*80}")
+        
+        env_content = f"""OPENEMR_BASE_URL={self.config.BASE_URL}
+CLIENT_ID={self.config.CLIENT_ID}
+CLIENT_SECRET={self.config.CLIENT_SECRET}
+ACCESS_TOKEN={access_token}
+"""
+        with open(".env", "w") as f:
+            f.write(env_content)
+            
+        import os
         print(f"✅ Credentials saved to {os.path.abspath('.env')}")
 
 def main():
     print("starting OpenEMR Authentication...")
-    auth = AuthClient()
-    try:
-        auth.register_application()
+    auth = OpenEMRAuth()
+    
+    if auth.register_application():
         code = auth.get_authorization_code()
-        auth.exchange_code_for_token(code)
-        auth.save_to_env()
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        if code:
+            token = auth.exchange_code_for_token(code)
+            if token:
+                auth.save_to_env(token)
 
 if __name__ == "__main__":
     main()
