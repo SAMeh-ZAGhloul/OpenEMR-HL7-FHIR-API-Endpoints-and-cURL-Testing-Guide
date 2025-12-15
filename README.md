@@ -98,7 +98,7 @@ docker-compose down
 
 ## 🎯 Automation Overview
 
-This suite replaces complex manual cURL workflows with a single Python script.
+This suite replaces complex manual cURL workflows with a modular set of Python scripts.
 
 | Feature | Manual cURL | **Python Automation** |
 | :--- | :--- | :--- |
@@ -165,11 +165,13 @@ class Config:
 ```
 
 ### Script Architecture
-*   `OpenEMRAPI` class handles all logic.
-*   `register_application()`: Performs dynamic client registration.
-*   `get_authorization_code()`: Starts local HTTP server to capture callback.
-*   `exchange_code_for_token()`: Implements PKCE and Token Exchange.
-*   Scenario methods (`create_patient`, etc.) implment specific FHIR operations.
+*   **`2_openemr_auth.py` (`AuthClient`)**:
+    *   `register_application()`: Register OAuth2 client.
+    *   `get_authorization_code()`: Browser login & callback capture.
+    *   `exchange_code_for_token()`: PKCE Token verification.
+*   **`3_openemr_test.py` (`TestRunner`)**:
+    *   `load_env()`: Reads credentials.
+    *   `run()`: Orchestrates all FHIR endpoint tests.
 
 ---
 
