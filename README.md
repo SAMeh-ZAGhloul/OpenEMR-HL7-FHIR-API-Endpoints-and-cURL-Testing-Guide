@@ -14,9 +14,9 @@
 **Dec 2025**
 
 - **Authentication**: Registers a confidential (`private`) client and completes OAuth2 Authorization Code flow using `client_secret_post`.
-- **Scopes**: Requests `system/patient.read` and `system/patient.write` in addition to `openid`, `offline_access`, `api:oemr`, and `api:fhir`.
+- **Scopes**: Requests `user/Patient.read` and `user/Patient.write` in addition to `openid`, `offline_access`, `api:oemr`, and `api:fhir`.
 - **Read Access**: Verified via `Search Patients` test.
-- **Write Operations**: Attempted in sequence (Patient, Appointment, Encounter, Vitals, Note, Medication). Success depends on server configuration and granted scopes. If the server denies system write scopes, these calls may return `401/403`.
+- **Write Operations**: Attempted in sequence (Patient, Appointment, Encounter, Vitals, Note, Medication). Success depends on server configuration and granted scopes. If the server denies write scopes, these calls may return `401/403`.
 
 ---
 
@@ -38,6 +38,7 @@
 Get started testing OpenEMR FHIR APIs locally.
 
 ### Step 1: Check Prerequisites
+Validates Python environment, dependencies, and connectivity to OpenEMR endpoints.
 ```bash
 python3 1_check_prerequisites.py
 ```
@@ -158,9 +159,9 @@ Edit the `Config` class in `2_openemr_auth.py`:
 ```python
 class Config:
     BASE_URL = "https://localhost:8443"
-    REDIRECT_URI = "http://localhost:3000/callback"
+    REDIRECT_URI = "http://127.0.0.1:3000/callback"
     CALLBACK_PORT = 3000
-    SCOPES = "openid offline_access api:oemr api:fhir system/Patient.read system/Patient.write"
+    SCOPES = "openid offline_access api:oemr api:fhir user/Patient.read user/Patient.write"
     APP_TYPE = "private"
     AUTH_METHOD = "client_secret_post"
 ```
