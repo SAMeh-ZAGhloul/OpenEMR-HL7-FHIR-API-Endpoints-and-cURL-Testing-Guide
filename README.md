@@ -49,7 +49,19 @@ Expected: `✅ All checks passed`
 pip3 install -r requirements.txt
 ```
 
-### Step 3: Run Automated Tests
+### Step 3: Start OpenEMR Services (Required)
+Before running authentication and tests, start the OpenEMR services:
+```bash
+# Generate SSL certificates
+chmod +x generate_certs.sh
+./generate_certs.sh
+
+# Start OpenEMR with Docker
+docker compose up -d
+```
+Wait 3-5 minutes for OpenEMR to initialize completely.
+
+### Step 4: Run Automated Tests
 
 The suite runs in two steps:
 
@@ -65,11 +77,44 @@ python3 3_openemr_test.py
 ```
 Reads credentials and performs FHIR API tests.
 
+### Note on Current Environment
+⚠️ **Docker Required**: This PoC requires Docker to run the OpenEMR services. If Docker is not available or not running, the authentication and test scripts will not be able to connect to the OpenEMR API endpoints. The prerequisites check can be run without Docker, but full functionality requires the OpenEMR services to be running.
+
+#### Starting Docker (if not running)
+- **On macOS**: Launch Docker Desktop from Applications folder
+- **On Linux**: Start the Docker service with `sudo systemctl start docker`
+- **Verify**: Run `docker info` - you should see both Client and Server information
+
+Once Docker is running, execute these commands in sequence:
+```bash
+# Generate certificates
+chmod +x generate_certs.sh
+./generate_certs.sh
+
+# Start OpenEMR services
+docker compose up -d
+
+# Wait for services to be ready (2-5 minutes)
+# Then run the authentication and test scripts
+python3 2_openemr_auth.py
+python3 3_openemr_test.py
+```
+
 ---
 
 ## 🐳 Deployment
 
 Run the OpenEMR environment locally using Docker and an Nginx reverse proxy terminating HTTPS on `8443`.
+
+### Prerequisites: Ensure Docker is Running
+Before starting, make sure Docker daemon is running:
+```bash
+# Check if Docker is available
+docker info
+
+# On macOS, start Docker Desktop if needed
+# On Linux, start Docker service: sudo systemctl start docker
+```
 
 ### 1) Generate SSL Certificates
 Generate self-signed certificates for local HTTPS:
@@ -82,6 +127,10 @@ Creates `nginx/certs/cert.pem` and `nginx/certs/key.pem`.
 ### 2) Start Services
 Pull images and start containers:
 ```bash
+# Using modern Docker Compose syntax
+docker compose up -d
+
+# Or if using older Docker versions
 docker-compose up -d
 ```
 Wait a few minutes for OpenEMR to initialize (database population).
@@ -92,8 +141,15 @@ Wait a few minutes for OpenEMR to initialize (database population).
 
 ### 4) Stop Services
 ```bash
+docker compose down
+# or
 docker-compose down
 ```
+
+### Troubleshooting
+- **"Not Found" error**: Ensure Docker daemon is running and Docker Compose plugin is installed
+- **"Permission denied"**: On Linux, run with sudo or add user to docker group: `sudo usermod -aG docker $USER`
+- **Certificate issues**: If you get SSL warnings, the self-signed certificates are expected for local testing
 
 ---
 
@@ -149,7 +205,6 @@ sequenceDiagram
 ### What Gets Tested
 Scenarios attempted:
 - Patient demographics (create/search)
-- Appointment scheduling (book)
 - Clinical encounter (encounter, vitals, notes)
 - Prescribing (MedicationRequest)
 
@@ -176,8 +231,10 @@ class Config:
   - `load_env()`: Load `.env`
   - `run()`: Execute FHIR endpoint tests
 
-### Enable the Client in OpenEMR
-- After registration, newly created clients may be disabled by default. Enable the client under `Admin → System → API Clients`.
+### Enable the Client in OpenEMR (Required)
+- After registration, newly created clients may be disabled by default. You **must** enable the client under `Admin → System → API Clients`.
+- Look for the client with name "POC Testing App" and ensure it is enabled.
+- Without enabling the client, token exchange will fail with "invalid_client" error.
 
 ### Discovery & Endpoints
 - OIDC Discovery: `<BASE_URL>/oauth2/default/.well-known/openid-configuration`
@@ -186,8 +243,9 @@ class Config:
 - Token: `<BASE_URL>/oauth2/default/token`
 
 ### Scope Conventions
-- SMART scopes often use capitalized FHIR resource names, e.g., `system/Patient.read`, `user/Encounter.write`.
-- Some environments accept lowercase resource names; prefer capitalized names for compatibility.
+- SMART scopes often use capitalized FHIR resource names, e.g., `system/Patient.read`, `user/Patient.write`.
+- OpenEMR may support different scope formats. The current implementation uses `user/Patient.read` and `user/Patient.write`.
+- Not all FHIR resources may be enabled in every OpenEMR instance. If you receive "invalid_scope" errors, check your OpenEMR configuration.
 
 ---
 
@@ -212,12 +270,26 @@ Top-level layout for quick orientation:
 
 - `1_check_prerequisites.py`: Environment checks (Python, endpoints)
 - `2_openemr_auth.py`: OAuth2 client registration, browser auth, token exchange, `.env` save
-- `3_openemr_test.py`: FHIR tests (read/write scenarios)
+- `3_openemr_test.py`: FHIR tests (read/write scenarios) - Enhanced with better error handling and ID extraction
 - `requirements.txt`: Python dependencies
 - `docker-compose.yml`: OpenEMR app, DB, and HTTPS reverse proxy
 - `nginx/conf.d/default.conf`: Nginx site config (SSL termination, proxy to app)
 - `nginx/certs/`: Self-signed TLS certs generated locally
 - `generate_certs.sh`: Helper to generate `cert.pem`/`key.pem`
+
+## 🛠️ Enhanced Features
+
+### Improved Test Script (`3_openemr_test.py`)
+- Better error handling to prevent script crashes
+- Enhanced ID extraction from multiple response locations (JSON body, Location header)
+- Sequential validation starting with authentication check
+- Improved debugging output for troubleshooting
+- Resource dependency checks to ensure proper creation order
+
+### Authentication Script (`2_openemr_auth.py`)
+- Fixed JWKS generation and usage
+- Improved authorization URL construction
+- Better error handling and debugging information
 
 ## 🪪 License
 
