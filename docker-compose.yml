@@ -15,7 +15,7 @@ services:
     depends_on:
       - openemr_mysql
     volumes:
-      - openemr_data:/var/www/html/openemr
+      - openemr_data:/var/www/localhost/htdocs/openemr
 
   # The Reverse Proxy
   nginx_proxy:
