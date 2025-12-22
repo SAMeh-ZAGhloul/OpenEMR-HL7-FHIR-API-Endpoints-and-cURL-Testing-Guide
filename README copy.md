@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![FHIR](https://img.shields.io/badge/FHIR-R4-green.svg)](https://www.hl7.org/fhir/)
-[![OpenEMR](https://img.shields.io/badge/OpenEMR-7.0.3-orange.svg)](https://www.open-emr.org/)
+[![OpenEMR](https://img.shields.io/badge/OpenEMR-7.0+-orange.svg)](https://www.open-emr.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **🚀 Complete Python automation suite** that automates OAuth2 authentication and tests FHIR API endpoints. Replaces manual cURL workflows with a browser-based login and programmatic validation.
@@ -16,7 +16,7 @@
 - **Authentication**: Registers a confidential (`private`) client and completes OAuth2 Authorization Code flow using `client_secret_post`.
 - **Scopes**: Requests `user/Patient.read` and `user/Patient.write` in addition to `openid`, `offline_access`, `api:oemr`, and `api:fhir`.
 - **Read Access**: Verified via `Search Patients` test.
-- **Write Operations**: Patient creation works successfully. Encounter creation returns 404 as it's not supported in OpenEMR 7.0.3 (planned for future versions).
+- **Write Operations**: Attempted in sequence (Patient, Appointment, Encounter, Vitals, Note, Medication). Success depends on server configuration and granted scopes. If the server denies write scopes, these calls may return `401/403`.
 
 ---
 
@@ -30,7 +30,6 @@
 - [Limitations](#-limitations)
 - [Troubleshooting](#-troubleshooting)
 - [Repository Structure](#-repository-structure)
-- [Enhanced Features](#-enhanced-features)
 - [License](#-license)
 
 ---
@@ -63,16 +62,7 @@ docker compose up -d
 ```
 Wait 3-5 minutes for OpenEMR to initialize completely.
 
-### Step 4: Configure OpenEMR (Required)
-Enable API services in OpenEMR admin interface:
-1. Access OpenEMR at `https://localhost:8443`
-2. Log in as admin
-3. Go to: **Administration → Config → Connectors**
-4. Enable: **"Enable OpenEMR Standard FHIR REST API"**
-5. Set **Site Address** to: `https://localhost:8443`
-6. Save changes
-
-### Step 5: Run Automated Tests
+### Step 4: Run Automated Tests
 
 The suite runs in two steps:
 
@@ -87,6 +77,14 @@ Registers the app, opens the browser for login, and saves credentials to `.env`.
 python3 3_openemr_test.py
 ```
 Reads credentials and performs FHIR API tests.
+
+### Note on Current Environment
+⚠️ **Docker Required**: This PoC requires Docker to run the OpenEMR services. If Docker is not available or not running, the authentication and test scripts will not be able to connect to the OpenEMR API endpoints. The prerequisites check can be run without Docker, but full functionality requires the OpenEMR services to be running.
+
+#### Starting Docker (if not running)
+- **On macOS**: Launch Docker Desktop from Applications folder
+- **On Linux**: Start the Docker service with `sudo systemctl start docker`
+- **Verify**: Run `docker info` - you should see both Client and Server information
 
 Once Docker is running, execute these commands in sequence:
 ```bash
@@ -109,10 +107,52 @@ python3 3_openemr_test.py
 
 Run the OpenEMR environment locally using Docker and an Nginx reverse proxy terminating HTTPS on `8443`.
 
+### Prerequisites: Ensure Docker is Running
+Before starting, make sure Docker daemon is running:
+```bash
+# Check if Docker is available
+docker info
+
+# On macOS, start Docker Desktop if needed
+# On Linux, start Docker service: sudo systemctl start docker
+```
+
+### 1) Generate SSL Certificates
+Generate self-signed certificates for local HTTPS:
+```bash
+chmod +x generate_certs.sh
+./generate_certs.sh
+```
+Creates `nginx/certs/cert.pem` and `nginx/certs/key.pem`.
+
+### 2) Start Services
+Pull images and start containers:
+```bash
+# Using modern Docker Compose syntax
+docker compose up -d
+
+# Or if using older Docker versions
+docker-compose up -d
+```
+Wait a few minutes for OpenEMR to initialize (database population).
+
 ### 3) Verify Deployment
 - URL: `https://localhost:8443`
 - Login: Use your OpenEMR credentials. Fresh installs may prompt initial setup.
 
+### 4) Stop Services
+```bash
+docker compose down
+# or
+docker-compose down
+```
+
+### Troubleshooting
+- **"Not Found" error**: Ensure Docker daemon is running and Docker Compose plugin is installed
+- **"Permission denied"**: On Linux, run with sudo or add user to docker group: `sudo usermod -aG docker $USER`
+- **Certificate issues**: If you get SSL warnings, the self-signed certificates are expected for local testing
+
+---
 
 ## 🎯 Automation Overview
 
@@ -151,6 +191,14 @@ sequenceDiagram
     Script->>OpenEMR: Test FHIR endpoints
     Script->>User: Display results
 ```
+
+### Execution Timeline
+- 0:00 Register client
+- 0:02 Browser opens
+- 0:05 Token acquired
+- 0:06 Read access verified
+- 0:07+ Write scenarios attempted
+
 ---
 
 ## ⚙️ Configuration
@@ -228,6 +276,20 @@ The test script handles these limitations gracefully by continuing with other te
 
 ---
 
+## 🔧 Troubleshooting
+
+### 401/403 on Write Operations
+- Cause: Missing or denied `system/*` or `user/*` write scopes
+- Fix: Adjust server configuration to grant appropriate scopes; confirm client type is allowed to request them
+
+### Connection Refused
+- Ensure OpenEMR is running (`docker ps`)
+- Verify `BASE_URL` in `Config`
+
+### Browser Doesn't Open
+- Manually copy the URL printed in the terminal
+
+---
 
 ## 📁 Repository Structure
 
@@ -242,4 +304,20 @@ Top-level layout for quick orientation:
 - `nginx/certs/`: Self-signed TLS certs generated locally
 - `generate_certs.sh`: Helper to generate `cert.pem`/`key.pem`
 
----
+## 🛠️ Enhanced Features
+
+### Improved Test Script (`3_openemr_test.py`)
+- Better error handling to prevent script crashes
+- Enhanced ID extraction from multiple response locations (JSON body, Location header)
+- Sequential validation starting with authentication check
+- Improved debugging output for troubleshooting
+- Resource dependency checks to ensure proper creation order
+
+### Authentication Script (`2_openemr_auth.py`)
+- Fixed JWKS generation and usage
+- Improved authorization URL construction
+- Better error handling and debugging information
+
+## 🪪 License
+
+MIT License. See `LICENSE`.
