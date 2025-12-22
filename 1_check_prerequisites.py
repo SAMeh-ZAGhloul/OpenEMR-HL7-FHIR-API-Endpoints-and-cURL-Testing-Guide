@@ -38,10 +38,16 @@ def check_openemr_connection():
     
     try:
         response = requests.get(url, verify=False, timeout=5)
-        if response.status_code in [200, 302, 401]:
+        if response.status_code in [200, 302, 301, 401]:
             print(f"   ✅ OpenEMR is accessible at {url}")
             return True
         else:
+            # Check if API subpath works even if root doesn't (common in container startup)
+            api_check = requests.get(f"{url}/apis/default/fhir/metadata", verify=False, timeout=5)
+            if api_check.status_code in [200, 401]:
+                print(f"   ✅ OpenEMR (API only) is accessible at {url}")
+                return True
+            
             print(f"   ⚠️  OpenEMR responded with status {response.status_code}")
             return False
     except requests.exceptions.ConnectionError:
