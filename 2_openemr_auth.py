@@ -32,7 +32,7 @@ class Config:
     REDIRECT_URI = "http://127.0.0.1:3000/callback"
     REDIRECT_URIS = ["http://localhost:3000/callback", "http://127.0.0.1:3000/callback"]
     CALLBACK_PORT = 3000
-    SCOPES = "openid offline_access api:oemr api:fhir user/Patient.read user/Patient.write"
+    SCOPES = "openid offline_access api:oemr api:fhir user/patient.read user/patient.write user/appointment.read user/appointment.write user/encounter.read user/encounter.write user/vital.read user/vital.write user/document.read user/document.write user/medication.read user/medication.write"
     
     APP_TYPE = "private"
     AUTH_METHOD = "client_secret_post"

@@ -64,7 +64,13 @@ class TestRunner:
         data = {
             "resourceType": "Patient",
             "active": True,
-            "name": [{"family": "Test", "given": ["Split", "Script"]}],
+            "name": [
+                {
+                    "use": "official",
+                    "family": "Test",
+                    "given": ["Split", "Script"]
+                }
+            ],
             "gender": "male",
             "birthDate": "1990-01-01"
         }
@@ -72,10 +78,29 @@ class TestRunner:
         self.print_response(res)
         if res.status_code in [200, 201]:
             print("✅ Created")
-            self.ids['patient'] = res.json().get('id')
+            # Debug: Print full response info
+            print(f"DEBUG: Response Headers: {dict(res.headers)}")
+            print(f"DEBUG: Response Body: {res.text}")
+            
+            # OpenEMR often returns 'uuid' or 'pid' instead of 'id' in the JSON body
+            data = res.json() if res.text.strip() else {}
+            self.ids['patient'] = data.get('uuid') or data.get('id') or data.get('pid')
+            
+            if not self.ids['patient'] and 'Location' in res.headers:
+                loc = res.headers['Location']
+                parts = loc.split('/')
+                if '_history' in parts:
+                    idx = parts.index('_history')
+                    self.ids['patient'] = parts[idx-1]
+                else:
+                    self.ids['patient'] = parts[-1]
+            
+            print(f"Captured Patient ID: {self.ids['patient']}")
         
     def create_appointment(self):
-        if 'patient' not in self.ids: return
+        if not self.ids.get('patient'):
+            print("⚠️ Skipping Appointment: No Patient ID captured")
+            return
         self.print_step("Create Appointment")
         url = f"{self.fhir_url}/Appointment"
         next_hour = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -94,11 +119,11 @@ class TestRunner:
         res = self.session.post(url, json=data, headers=self.get_headers())
         self.print_response(res)
         if res.status_code in [200, 201]:
-            self.ids['appointment'] = res.json().get('id')
-            print("✅ Created")
+            self.ids['appointment'] = res.json().get('uuid') or res.json().get('id') or res.json().get('pid')
+            print(f"✅ Created Appointment ID: {self.ids['appointment']}")
 
     def create_encounter(self):
-        if 'patient' not in self.ids: return
+        if not self.ids.get('patient'): return
         self.print_step("Create Encounter")
         url = f"{self.fhir_url}/Encounter"
         data = {
@@ -111,8 +136,8 @@ class TestRunner:
         res = self.session.post(url, json=data, headers=self.get_headers())
         self.print_response(res)
         if res.status_code in [200, 201]:
-            self.ids['encounter'] = res.json().get('id')
-            print("✅ Created")
+            self.ids['encounter'] = res.json().get('uuid') or res.json().get('id') or res.json().get('pid')
+            print(f"✅ Created Encounter ID: {self.ids['encounter']}")
 
     def create_vitals(self):
         if 'encounter' not in self.ids: return
@@ -132,8 +157,8 @@ class TestRunner:
         res = self.session.post(url, json=data, headers=self.get_headers())
         self.print_response(res)
         if res.status_code in [200, 201]:
-            self.ids['vitals'] = res.json().get('id')
-            print("✅ Created")
+            self.ids['vitals'] = res.json().get('uuid') or res.json().get('id') or res.json().get('pid')
+            print(f"✅ Created Observation ID: {self.ids['vitals']}")
 
     def create_note(self):
         if 'encounter' not in self.ids: return
@@ -143,7 +168,8 @@ class TestRunner:
         data = {
             "resourceType": "DocumentReference",
             "status": "current",
-            "type": {"coding": [{"system": "http://loinc.org", "code": "34109-7"}]},
+            "docStatus": "final",
+            "type": {"coding": [{"system": "http://loinc.org", "code": "11488-4", "display": "Consult Note"}]},
             "subject": {"reference": f"Patient/{self.ids['patient']}"},
             "context": {"encounter": [{"reference": f"Encounter/{self.ids['encounter']}"}]},
             "content": [{"attachment": {"contentType": "text/plain", "data": note}}]
@@ -151,8 +177,8 @@ class TestRunner:
         res = self.session.post(url, json=data, headers=self.get_headers())
         self.print_response(res)
         if res.status_code in [200, 201]:
-            self.ids['note'] = res.json().get('id')
-            print("✅ Created")
+            self.ids['note'] = res.json().get('uuid') or res.json().get('id') or res.json().get('pid')
+            print(f"✅ Created DocumentReference ID: {self.ids['note']}")
 
     def create_medication(self):
         if 'encounter' not in self.ids: return
@@ -168,8 +194,8 @@ class TestRunner:
         res = self.session.post(url, json=data, headers=self.get_headers())
         self.print_response(res)
         if res.status_code in [200, 201]:
-            self.ids['medication'] = res.json().get('id')
-            print("✅ Created")
+            self.ids['medication'] = res.json().get('uuid') or res.json().get('id') or res.json().get('pid')
+            print(f"✅ Created MedicationRequest ID: {self.ids['medication']}")
 
     def run(self):
         print("Starting FHIR Tests...")
