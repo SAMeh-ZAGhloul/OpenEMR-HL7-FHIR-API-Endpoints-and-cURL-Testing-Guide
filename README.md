@@ -27,6 +27,7 @@
 - [Automation Overview](#-automation-overview)
 - [How It Works](#-how-it-works)
 - [Configuration](#-configuration)
+- [Limitations](#-limitations)
 - [Troubleshooting](#-troubleshooting)
 - [Repository Structure](#-repository-structure)
 - [License](#-license)
@@ -205,8 +206,9 @@ sequenceDiagram
 ### What Gets Tested
 Scenarios attempted:
 - Patient demographics (create/search)
-- Clinical encounter (encounter, vitals, notes)
-- Prescribing (MedicationRequest)
+- Clinical encounter operations (read only - creation not supported in current OpenEMR version)
+- Clinical observations (vitals, notes) - dependent on encounter creation
+- Prescribing (MedicationRequest) - dependent on encounter creation
 
 ### Auth Script Settings
 Edit the `Config` class in `2_openemr_auth.py`:
@@ -246,6 +248,31 @@ class Config:
 - SMART scopes often use capitalized FHIR resource names, e.g., `system/Patient.read`, `user/Patient.write`.
 - OpenEMR may support different scope formats. The current implementation uses `user/Patient.read` and `user/Patient.write`.
 - Not all FHIR resources may be enabled in every OpenEMR instance. If you receive "invalid_scope" errors, check your OpenEMR configuration.
+
+---
+
+## 🚧 Limitations
+
+### Current OpenEMR Version Support
+- **OpenEMR Version**: 7.0.3
+- **FHIR R4 Support**: Partial implementation with US Core 8.0 compliance
+- **SMART on FHIR**: v2.2.0 support
+
+### Resource Operation Limitations
+- **Patient Resources**: ✅ Full CRUD support (Create, Read, Update, Delete)
+- **Encounter Resources**: ❌ Read/Search only (Create/Update operations not yet implemented)
+- **Appointment Resources**: ❌ Read/Search only (Create/Update operations not yet implemented)
+- **Other Resources**: Varies by resource type
+
+### Technical Limitations
+- **Encounter Creation**: Not available in OpenEMR 7.0.3; planned for future releases (targeted for version 7.0.4+)
+- **Native API Access**: Requires different authentication scopes than FHIR API
+- **Appointment Creation**: Not available through FHIR API in current version
+
+### Future Enhancements
+According to OpenEMR GitHub issue #8639, Create, Update, and Delete operations for FHIR resources (including Encounter and Appointment) are planned as future enhancements after basic Read/Search functionality is established with SMART on FHIR v2.2.0 scope syntax.
+
+The test script handles these limitations gracefully by continuing with other tests when one resource operation fails.
 
 ---
 
