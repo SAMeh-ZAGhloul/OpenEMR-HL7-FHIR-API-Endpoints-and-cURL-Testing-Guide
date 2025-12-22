@@ -10,6 +10,8 @@ services:
       - MYSQL_USER=openemr
       - MYSQL_PASS=openemr
       - OPENEMR_DATABASE=openemr
+      - APACHE_HTTPS=on
+      - APACHE_SERVER_NAME=localhost:8443
     depends_on:
       - openemr_mysql
     volumes:
