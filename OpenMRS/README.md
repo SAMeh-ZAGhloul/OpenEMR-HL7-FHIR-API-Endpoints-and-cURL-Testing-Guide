@@ -109,10 +109,23 @@ python3 3_openmrs_test.py
 
 Run the OpenMRS environment locally using Docker and an Nginx reverse proxy terminating HTTPS on `8443`.
 
+### Prerequisites
+- Docker and Docker Compose
+- Docker daemon must be running (start Docker Desktop or docker service)
+
 ### 3) Verify Deployment
-- URL: `https://localhost:8443`
+- URL: `https://localhost:8443` (with HTTPS reverse proxy)
+- URL: `http://localhost:8080/openmrs` (direct access)
 - Login: admin/test (default credentials)
 - Module: Ensure FHIR2 module is installed and enabled
+
+### Complete Setup Process
+1. Generate SSL certificates: `./generate_certs.sh`
+2. Start services: `docker-compose up -d`
+3. Wait 5-10 minutes for OpenMRS to initialize
+4. Complete setup wizard at `http://localhost:8080/openmrs`
+5. Install FHIR2 and OAuth2 modules
+6. Configure modules as needed
 
 ## 🎯 Automation Overview
 
