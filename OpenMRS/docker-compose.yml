@@ -9,9 +9,8 @@ services:
       - DB_DATABASE=openmrs
       - DB_USERNAME=openmrs
       - DB_PASSWORD=openmrs
-      - DB_CREATE_TABLES=false
-      - DB_AUTO_UPDATE=false
-      - MODULES_TO_INSTALL=FHIR2:1.8.0,oauth2:1.0.0
+      - DB_CREATE_TABLES=true
+      - DB_AUTO_UPDATE=true
     depends_on:
       - openmrs_db
     ports:
@@ -32,7 +31,8 @@ services:
     command: --default-authentication-plugin=mysql_native_password
     volumes:
       - openmrs_db_data:/var/lib/mysql
-      - ./init-openmrs.sql:/docker-entrypoint-initdb.d/init-openmrs.sql
+    ports:
+      - "3306:3306"
 
   # Nginx Reverse Proxy for HTTPS
   nginx_proxy:
@@ -41,7 +41,7 @@ services:
     restart: always
     ports:
       - "8443:443"
-      - "8081:80"
+      - "8081:8080"
     depends_on:
       - openmrs
     volumes:
