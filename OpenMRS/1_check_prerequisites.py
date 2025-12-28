@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""
+Quick validation script to check if OpenMRS is ready for API testing
+"""
+
+import sys
+import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def check_python_version():
+    """Check Python version"""
+    print("🔍 Checking Python version...")
+    version = sys.version_info
+    if version.major >= 3 and version.minor >= 7:
+        print(f"   ✅ Python {version.major}.{version.minor}.{version.micro} (OK)")
+        return True
+    else:
+        print(f"   ❌ Python {version.major}.{version.minor}.{version.micro} (Need 3.7+)")
+        return False
+
+def check_dependencies():
+    """Check required Python packages"""
+    print("\n🔍 Checking dependencies...")
+    try:
+        import requests
+        print(f"   ✅ requests {requests.__version__}")
+        return True
+    except ImportError:
+        print("   ❌ requests not installed")
+        print("      Run: pip3 install -r requirements.txt")
+        return False
+
+def check_openmrs_connection():
+    """Check if OpenMRS is accessible"""
+    print("\n🔍 Checking OpenMRS connection...")
+    url = "https://localhost:8443"
+
+    try:
+        response = requests.get(url, verify=False, timeout=10)
+        if response.status_code in [200, 302, 301, 401]:
+            print(f"   ✅ OpenMRS is accessible at {url}")
+            return True
+        else:
+            # Check if API subpath works even if root doesn't (common in container startup)
+            api_check = requests.get(f"{url}/ws/fhir2/R4/metadata", verify=False, timeout=10)
+            if api_check.status_code in [200, 401]:
+                print(f"   ✅ OpenMRS (API only) is accessible at {url}")
+                return True
+
+            print(f"   ⚠️  OpenMRS responded with status {response.status_code}")
+            return False
+    except requests.exceptions.ConnectionError:
+        print(f"   ❌ Cannot connect to {url}")
+        print("      Make sure OpenMRS is running")
+        return False
+    except requests.exceptions.Timeout:
+        print(f"   ❌ Connection timeout to {url}")
+        return False
+    except Exception as e:
+        print(f"   ❌ Error: {str(e)}")
+        return False
+
+def check_fhir_endpoint():
+    """Check if FHIR endpoint is accessible"""
+    print("\n🔍 Checking FHIR endpoint...")
+    url = "https://localhost:8443/ws/fhir2/R4/metadata"
+
+    try:
+        response = requests.get(url, verify=False, timeout=10)
+        # 401 is expected without auth, but means endpoint exists
+        if response.status_code in [200, 401]:
+            print(f"   ✅ FHIR endpoint is accessible")
+            return True
+        elif response.status_code == 404:
+            print(f"   ❌ FHIR endpoint not found (404)")
+            print("      Make sure FHIR2 module is installed and enabled in OpenMRS")
+            return False
+        else:
+            print(f"   ⚠️  FHIR endpoint responded with status {response.status_code}")
+            return True  # Might still work
+    except requests.exceptions.ConnectionError:
+        print(f"   ❌ Cannot connect to FHIR endpoint")
+        return False
+    except Exception as e:
+        print(f"   ⚠️  Error checking FHIR: {str(e)}")
+        return False
+
+def check_oauth_endpoint():
+    """Check if OAuth2 endpoint is accessible"""
+    print("\n🔍 Checking OAuth2 endpoint...")
+    url = "https://localhost:8443/oauth2/authorize"
+
+    try:
+        # Check if the endpoint exists by making a request that should redirect due to missing params
+        response = requests.get(url, verify=False, timeout=10)
+        if response.status_code in [200, 302, 400, 401]:
+            print(f"   ✅ OAuth2 authorization endpoint is accessible")
+            return True
+        elif response.status_code == 404:
+            print(f"   ❌ OAuth2 endpoint not found (404)")
+            print("      Check if OAuth2 module is installed in OpenMRS")
+            return False
+        else:
+            print(f"   ⚠️  OAuth2 endpoint responded with status {response.status_code}")
+            return True
+    except Exception as e:
+        print(f"   ⚠️  Error checking OAuth2: {str(e)}")
+        return False
+
+def main():
+    print("""
+╔════════════════════════════════════════════════════════════════╗
+║           OpenMRS API Testing - Prerequisites Check            ║
+╚════════════════════════════════════════════════════════════════╝
+""")
+
+    checks = [
+        check_python_version(),
+        check_dependencies(),
+        check_openmrs_connection(),
+        check_fhir_endpoint(),
+        check_oauth_endpoint()
+    ]
+
+    print("\n" + "="*70)
+    print("SUMMARY")
+    print("="*70)
+
+    passed = sum(checks)
+    total = len(checks)
+
+    if passed == total:
+        print(f"✅ All checks passed ({passed}/{total})")
+        print("\n🚀 You're ready to run: python3 2_openmrs_auth.py")
+        return 0
+    else:
+        print(f"⚠️  {passed}/{total} checks passed")
+        print("\n📝 Please fix the issues above before running the test script")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
