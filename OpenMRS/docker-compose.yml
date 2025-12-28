@@ -5,10 +5,12 @@ services:
     container_name: openmrs_server
     restart: always
     environment:
-      - DATABASE_HOST=openmrs_db
-      - DATABASE_NAME=openmrs
-      - DATABASE_USER=openmrs
-      - DATABASE_PASSWORD=openmrs
+      - DB_HOST=openmrs_db
+      - DB_DATABASE=openmrs
+      - DB_USERNAME=openmrs
+      - DB_PASSWORD=openmrs
+      - DB_CREATE_TABLES=false
+      - DB_AUTO_UPDATE=false
       - MODULES_TO_INSTALL=FHIR2:1.8.0,oauth2:1.0.0
     depends_on:
       - openmrs_db
